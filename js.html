@@ -1,0 +1,1323 @@
+<script>
+    let currentUser = null;
+    let userRecords = [];
+    let dutyRecords = [];
+    let currentCalDate = new Date();
+    const DEPT_AP = "พยาธิวิทยากายวิภาค";
+    const DEPT_CP = "พยาธิวิทยาคลินิกและเทคนิคการแพทย์";
+    
+    let globalReportData = []; 
+    let globalReportMonth = "";
+    let globalReportYear = "";
+
+    // Admin Calendar Variables
+    let adminCalDate = new Date();
+    let adminScheduleData = [];
+    let allUsersList = [];
+
+    const thaiHolidays = {
+        "2026-01-01": "วันขึ้นปีใหม่", "2026-03-03": "วันมาฆบูชา", "2026-04-06": "วันจักรี",
+        "2026-04-13": "วันสงกรานต์", "2026-04-14": "วันสงกรานต์", "2026-04-15": "วันสงกรานต์",
+        "2026-05-04": "วันฉัตรมงคล", "2026-06-01": "วันหยุดชดเชยวันวิสาขบูชา", "2026-06-03": "วันเฉลิมฯ พระราชินี",
+        "2026-07-28": "วันเฉลิมฯ ร.10", "2026-07-29": "วันอาสาฬหบูชา", "2026-07-30": "วันเข้าพรรษา",
+        "2026-08-12": "วันแม่แห่งชาติ", "2026-10-13": "วันนวมินทรมหาราช", "2026-10-23": "วันปิยมหาราช",
+        "2026-12-07": "วันหยุดชดเชย วันพ่อแห่งชาติ", "2026-12-10": "วันรัฐธรรมนูญ", "2026-12-31": "วันสิ้นปี",
+        "2027-01-01": "วันขึ้นปีใหม่", "2027-02-22": "วันมาฆบูชา", "2027-04-06": "วันจักรี",
+        "2027-04-13": "วันสงกรานต์", "2027-04-14": "วันสงกรานต์", "2027-04-15": "วันสงกรานต์",
+        "2027-05-01": "วันแรงงาน", "2027-05-04": "วันฉัตรมงคล", "2027-05-20": "วันวิสาขบูชา",
+        "2027-06-03": "วันเฉลิมฯ พระราชินี", "2027-07-19": "วันอาสาฬหบูชา", "2027-07-28": "วันเฉลิมฯ ร.10",
+        "2027-08-12": "วันแม่แห่งชาติ", "2027-10-13": "วันนวมินทรมหาราช", "2027-10-23": "วันปิยมหาราช",
+        "2027-12-05": "วันพ่อแห่งชาติ", "2027-12-10": "วันรัฐธรรมนูญ", "2027-12-31": "วันสิ้นปี"
+    };
+
+    $(document).ready(() => {
+        const saved = localStorage.getItem('fineStampUser');
+        if(saved) {
+            currentUser = JSON.parse(saved);
+            showMainScreen();
+        }
+        
+        const yearSelect = $('#reportYear');
+        const currentYearAD = new Date().getFullYear();
+        const startYearAD = 2026;
+        const endYearAD = Math.max(currentYearAD + 3, startYearAD + 1);
+        for (let y = startYearAD; y <= endYearAD; y++) {
+            yearSelect.append(new Option(y + 543, y));
+        }
+        if (currentYearAD >= startYearAD) yearSelect.val(currentYearAD); else yearSelect.val(startYearAD);
+        $('#reportMonth').val(new Date().getMonth() + 1);
+
+        let userHandedness = localStorage.getItem('fineStampHandedness') || 'right';
+        setHandedness(userHandedness);
+        
+        const savedTheme = localStorage.getItem('fineStampTheme');
+        if(savedTheme === 'dark') {
+            $('html').addClass('dark');
+            $('#darkModeToggle').prop('checked', true);
+        }
+        
+        const savedFontScale = localStorage.getItem('fineStampFontScale') || 3;
+        $('#fontScaleRange').val(savedFontScale);
+        updateFontScale(savedFontScale);
+        
+        window.top.postMessage('FINESTAMP_READY', '*');
+    });
+
+    // --- SETTINGS FUNCTIONS ---
+    function openSettingsModal() { 
+        $('#settingsModal').removeClass('hidden'); 
+        
+        // เช็คว่าเป็น Admin ให้เปิด Section ตั้งค่าของ Admin ขึ้นมา
+        if (currentUser && currentUser.role === 'Admin') {
+            $('#adminSettingsSection').removeClass('hidden');
+            
+            // ตรวจสอบว่า Trigger อีเมลเปิดอยู่หรือไม่
+            google.script.run.withSuccessHandler(status => {
+                $('#emailNotifyToggle').prop('checked', status);
+            }).checkEmailTriggerStatus();
+
+            // ตรวจสอบว่า Trigger Telegram เปิดอยู่หรือไม่ (เพิ่มในเวอร์ชัน 1.3.0)
+            google.script.run.withSuccessHandler(status => {
+                $('#telegramNotifyToggle').prop('checked', status);
+            }).checkTelegramTriggerStatus();
+
+        } else {
+            $('#adminSettingsSection').addClass('hidden');
+        }
+    }
+
+    // ฟังก์ชันจัดการเปิด/ปิด แจ้งเตือน Email (Admin)
+    function toggleEmailNotification() {
+        const isChecked = $('#emailNotifyToggle').is(':checked');
+        $('#loading').removeClass('hidden').addClass('flex');
+        
+        if (isChecked) {
+            // สั่งเปิด Trigger
+            google.script.run
+                .withSuccessHandler(() => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    Swal.fire({
+                        icon: 'success', title: 'เปิดระบบแจ้งเตือนแล้ว',
+                        text: 'ระบบจะส่ง Email แจ้งเวรให้เจ้าหน้าที่อัตโนมัติในทุกๆ เช้า',
+                        confirmButtonColor: '#10b981', timer: 2500
+                    });
+                })
+                .withFailureHandler((error) => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    $('#emailNotifyToggle').prop('checked', false); // ย้อนค่ากลับ
+                    Swal.fire('เกิดข้อผิดพลาด', 'ระบบ Google อาจให้กดยืนยันสิทธิ์ขั้นสูงในครั้งแรก แนะนำให้ Admin เข้ารัน setupDailyTrigger ในหน้าเขียนโค้ดโดยตรงก่อนครับ: ' + error.message, 'error');
+                })
+                .setupDailyTrigger();
+        } else {
+            // สั่งปิด Trigger
+            google.script.run
+                .withSuccessHandler(() => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    Swal.fire({
+                        icon: 'success', title: 'ปิดระบบแจ้งเตือนแล้ว',
+                        text: 'ยกเลิกการส่ง Email อัตโนมัติเรียบร้อย',
+                        confirmButtonColor: '#10b981', timer: 2000
+                    });
+                })
+                .withFailureHandler((error) => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    $('#emailNotifyToggle').prop('checked', true); // ย้อนค่ากลับ
+                    Swal.fire('Error', 'การยกเลิกล้มเหลว: ' + error.message, 'error');
+                })
+                .removeDailyTrigger();
+        }
+    }
+
+    // ฟังก์ชันจัดการเปิด/ปิด แจ้งเตือน Telegram (Admin) - NEW in v1.3.0
+    function toggleTelegramNotification() {
+        const isChecked = $('#telegramNotifyToggle').is(':checked');
+        $('#loading').removeClass('hidden').addClass('flex');
+        
+        if (isChecked) {
+            // สั่งเปิด Trigger Telegram
+            google.script.run
+                .withSuccessHandler(() => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    Swal.fire({
+                        icon: 'success', title: 'เปิดแจ้งเตือน Telegram แล้ว',
+                        text: 'ระบบจะส่งข้อความแจ้งเวรพรุ่งนี้เข้ากลุ่มอัตโนมัติ เวลา 16:00 น.',
+                        confirmButtonColor: '#0ea5e9', timer: 2500
+                    });
+                })
+                .withFailureHandler((error) => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    $('#telegramNotifyToggle').prop('checked', false); // ย้อนค่ากลับ
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถตั้งค่า Telegram Trigger ได้: ' + error.message, 'error');
+                })
+                .setupTelegramTrigger();
+        } else {
+            // สั่งปิด Trigger Telegram
+            google.script.run
+                .withSuccessHandler(() => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    Swal.fire({
+                        icon: 'success', title: 'ปิดแจ้งเตือน Telegram แล้ว',
+                        text: 'ยกเลิกการส่งข้อความอัตโนมัติเข้ากลุ่มเรียบร้อย',
+                        confirmButtonColor: '#0ea5e9', timer: 2000
+                    });
+                })
+                .withFailureHandler((error) => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    $('#telegramNotifyToggle').prop('checked', true); // ย้อนค่ากลับ
+                    Swal.fire('Error', 'การยกเลิกล้มเหลว: ' + error.message, 'error');
+                })
+                .removeTelegramTrigger();
+        }
+    }
+
+    function setHandedness(hand) {
+        localStorage.setItem('fineStampHandedness', hand);
+        if (hand === 'left') {
+            $('#btnLeftHand').removeClass('bg-transparent text-slate-500').addClass('bg-white shadow-sm text-teal-600');
+            $('#btnRightHand').removeClass('bg-white shadow-sm text-teal-600').addClass('bg-transparent text-slate-500');
+            $('#checkInActionArea').addClass('flex-row-reverse');
+            $('#checkOutActionArea').addClass('flex-row-reverse');
+        } else {
+            $('#btnRightHand').removeClass('bg-transparent text-slate-500').addClass('bg-white shadow-sm text-teal-600');
+            $('#btnLeftHand').removeClass('bg-white shadow-sm text-teal-600').addClass('bg-transparent text-slate-500');
+            $('#checkInActionArea').removeClass('flex-row-reverse');
+            $('#checkOutActionArea').removeClass('flex-row-reverse');
+        }
+    }
+    
+    function toggleDarkMode() {
+        const isDark = $('#darkModeToggle').is(':checked');
+        if(isDark) { $('html').addClass('dark'); localStorage.setItem('fineStampTheme', 'dark'); } 
+        else { $('html').removeClass('dark'); localStorage.setItem('fineStampTheme', 'light'); }
+    }
+    
+    function updateFontScale(val) {
+        const levels = { '1': { scale: 0.85, label: 'เล็ก' }, '2': { scale: 0.925, label: 'ค่อนข้างเล็ก' }, '3': { scale: 1, label: 'ปกติ' }, '4': { scale: 1.075, label: 'ค่อนข้างใหญ่' }, '5': { scale: 1.15, label: 'ใหญ่' } };
+        const selected = levels[val];
+        if(selected) {
+            document.documentElement.style.setProperty('--base-scale', selected.scale);
+            $('#fontScaleDisplay').text(selected.label);
+            localStorage.setItem('fineStampFontScale', val);
+        }
+    }
+    
+    function openChangePassword() {
+        Swal.fire({
+            title: 'เปลี่ยนรหัสผ่านใหม่',
+            html: `<input type="password" id="swal-pass1" class="swal2-input" placeholder="รหัสผ่านใหม่">
+                   <input type="password" id="swal-pass2" class="swal2-input" placeholder="ยืนยันรหัสผ่านอีกครั้ง">`,
+            confirmButtonText: 'บันทึก', focusConfirm: false, showCancelButton: true, cancelButtonText: 'ยกเลิก',
+            preConfirm: () => {
+                const p1 = document.getElementById('swal-pass1').value;
+                const p2 = document.getElementById('swal-pass2').value;
+                if (!p1 || !p2) Swal.showValidationMessage('กรุณากรอกข้อมูลให้ครบ');
+                else if (p1 !== p2) Swal.showValidationMessage('รหัสผ่านไม่ตรงกัน');
+                return p1;
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $('#loading').removeClass('hidden').addClass('flex');
+                google.script.run.withSuccessHandler(res => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    const response = JSON.parse(res);
+                    if(response.isOk) { Swal.fire('สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว', 'success'); } 
+                    else { Swal.fire('เกิดข้อผิดพลาด', response.message, 'error'); }
+                }).changePassword(currentUser.user_id, result.value);
+            }
+        });
+    }
+
+    const getNow = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hour = String(d.getHours()).padStart(2, '0');
+        const minute = String(d.getMinutes()).padStart(2, '0');
+        return { date: `${year}-${month}-${day}`, time: `${hour}:${minute}` };
+    };
+
+    // --- AUTH & COMMON ---
+    $('#loginForm').submit(function(e) {
+        e.preventDefault();
+        $('#loading').removeClass('hidden').addClass('flex');
+        google.script.run.withSuccessHandler(res => {
+            $('#loading').addClass('hidden').removeClass('flex');
+            const response = JSON.parse(res);
+            if(response.isOk) {
+                currentUser = response.user;
+                localStorage.setItem('fineStampUser', JSON.stringify(currentUser));
+                showMainScreen();
+            } else { Swal.fire({icon: 'error', title: 'Login Failed', text: response.message, confirmButtonColor: '#0d9488'}); }
+        }).loginUser($('#loginId').val(), $('#loginPass').val());
+    });
+
+    function logout() {
+        Swal.fire({
+            title: 'ออกจากระบบ', icon: 'question', showCancelButton: true,
+            confirmButtonColor: '#0d9488', cancelButtonColor: '#cbd5e1',
+            confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                currentUser = null;
+                localStorage.removeItem('fineStampUser');
+                $('#mainScreen').removeClass('flex').addClass('hidden');
+                $('#loginScreen').removeClass('hidden'); 
+                $('#loginForm')[0].reset();
+            }
+        });
+    }
+
+    function showMainScreen() {
+        $('#loginScreen').addClass('hidden');
+        $('#mainScreen').removeClass('hidden').addClass('flex');
+        $('#userNameDisplay').text(`${currentUser.first_name} ${currentUser.last_name}`);
+        $('#userGroupDisplay').text(currentUser.work_groups);
+        
+        if (currentUser.profile_image) {
+            $('#userAvatarText').addClass('hidden');
+            $('#userAvatarImg').attr('src', currentUser.profile_image).removeClass('hidden');
+        } else {
+            $('#userAvatarImg').addClass('hidden');
+            $('#userAvatarText').removeClass('hidden').text(currentUser.first_name.charAt(0));
+        }
+        
+        if(currentUser.role === 'Admin') { $('#adminPanelBtn').removeClass('hidden'); }
+        else { $('#adminPanelBtn').addClass('hidden'); }
+        
+        loadHistory();
+    }
+
+    // --- REGISTER FUNCTION ---
+    $('#regForm').submit(function(e){
+        e.preventDefault();
+        const groups = [];
+        $('input[name="work_group"]:checked').each(function() { groups.push($(this).val()); });
+        
+        if(groups.length === 0) {
+            Swal.fire({icon:'warning', title:'ข้อมูลไม่ครบ', text:'กรุณาเลือกสังกัดกลุ่มงาน', confirmButtonColor: '#0d9488'});
+            return;
+        }
+
+        const payload = {
+            id: 'U_' + Date.now(),
+            first_name: $('input[name="first_name"]').val(),
+            last_name: $('input[name="last_name"]').val(),
+            user_id: $('input[name="user_id"]').val(),
+            password: $('input[name="password"]').val(),
+            work_groups: groups.join(',')
+        };
+
+        $('#loading').removeClass('hidden').addClass('flex');
+        google.script.run.withSuccessHandler(res => {
+            $('#loading').addClass('hidden').removeClass('flex');
+            const response = JSON.parse(res);
+            if(response.isOk) {
+                $('#regModal').addClass('hidden');
+                Swal.fire({icon:'success', title:'สำเร็จ', text:'ลงทะเบียนเรียบร้อย', confirmButtonColor: '#0d9488'});
+                $('#regForm')[0].reset();
+            } else { Swal.fire({icon:'error', title:'Error', text:response.message, confirmButtonColor: '#0d9488'}); }
+        }).registerUser(JSON.stringify(payload));
+    });
+
+    // --- CALENDAR LOGIC (PERSONAL DUTY) ---
+    function openCalendarModal() {
+        currentCalDate = new Date();
+        renderCalendar();
+        const legendContainer = $('#calendarLegend');
+        legendContainer.empty();
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+
+        if (isCP) { legendContainer.append('<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-600"></span> เจาะเลือด</span>'); legendContainer.append('<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-600"></span> แล็บ</span>'); }
+        if (isAP) { legendContainer.append('<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-600"></span> HPV</span>'); }
+        $('#calendarModal').removeClass('hidden');
+    }
+
+    function changeMonth(step) { currentCalDate.setMonth(currentCalDate.getMonth() + step); renderCalendar(); }
+
+    function renderCalendar() {
+        const m = currentCalDate.getMonth();
+        const y = currentCalDate.getFullYear();
+        const firstDay = new Date(y, m, 1).getDay();
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        
+        const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+        $('#calMonthYear').text(`${thaiMonths[m]} ${y + 543}`);
+
+        $('#loading').removeClass('hidden').addClass('flex');
+        google.script.run.withSuccessHandler(res => {
+            $('#loading').addClass('hidden').removeClass('flex');
+            dutyRecords = JSON.parse(res);
+            drawGrid(firstDay, daysInMonth, m, y);
+        }).getMonthDuty(currentUser.user_id, m + 1, y);
+    }
+
+    function drawGrid(firstDay, daysInMonth, m, y) {
+        const grid = $('#calendarGrid');
+        grid.empty();
+        for (let i = 0; i < firstDay; i++) { grid.append('<div class="calendar-day empty-day"></div>'); }
+
+        const today = new Date();
+        const isCurrentMonth = today.getMonth() === m && today.getFullYear() === y;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateKey = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const duty = dutyRecords.find(r => r.date === dateKey);
+            const isToday = isCurrentMonth && today.getDate() === d;
+            
+            const currentDayOfWeek = new Date(y, m, d).getDay();
+            let dayClass = "";
+            let holidayHtml = "";
+            
+            if (currentDayOfWeek === 0 || currentDayOfWeek === 6) { dayClass = "day-weekend"; }
+            if (thaiHolidays[dateKey]) { dayClass += " day-holiday"; holidayHtml = `<div class="holiday-label">${thaiHolidays[dateKey]}</div>`; }
+
+            let dotsHtml = '';
+            if (duty) {
+                duty.shifts.forEach(s => {
+                    let colorClass = 'bg-gray-400';
+                    if(s === 'เจาะเลือดเช้า') colorClass = 'dot-blood';
+                    else if(s === 'เวรแล็บ') colorClass = 'dot-lab';
+                    else if(s === 'เวร HPV') colorClass = 'dot-hpv';
+                    dotsHtml += `<div class="shift-dot ${colorClass}"></div>`;
+                });
+            }
+
+            const dayEl = $(`
+                <div class="calendar-day ${dayClass} ${isToday ? 'today' : ''} ${duty ? 'has-duty' : ''}" onclick="openShiftSelect('${dateKey}')">
+                    <span>${d}</span>
+                    ${holidayHtml}
+                    <div class="flex gap-1 flex-wrap justify-center">${dotsHtml}</div>
+                </div>
+            `);
+            grid.append(dayEl);
+        }
+
+        const totalCellsFilled = firstDay + daysInMonth;
+        const remainingCells = 42 - totalCellsFilled;
+        for(let i=0; i<remainingCells; i++) { grid.append('<div class="calendar-day empty-day"></div>'); }
+    }
+
+    function openShiftSelect(dateStr) {
+        $('#calSelectedDate').text(dateStr);
+        const container = $('#calShiftOptions');
+        container.empty();
+        
+        const duty = dutyRecords.find(r => r.date === dateStr);
+        const currentShifts = duty ? duty.shifts : [];
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+
+        if (isCP) { container.append(createCheckbox('เจาะเลือดเช้า', currentShifts)); container.append(createCheckbox('เวรแล็บ', currentShifts)); }
+        if (isAP) { container.append(createCheckbox('เวร HPV', currentShifts)); }
+
+        $('#calShiftModal').removeClass('hidden');
+        $('#calShiftModal').data('date', dateStr);
+    }
+
+    function createCheckbox(label, currentShifts) {
+        const isChecked = currentShifts.includes(label) ? 'checked' : '';
+        return `<label class="flex items-center gap-3 p-2 border rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700">
+                    <input type="checkbox" value="${label}" ${isChecked} class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500">
+                    <span class="text-sm text-slate-700 dark:text-slate-300">${label}</span>
+                </label>`;
+    }
+
+    function saveShift() {
+        const dateStr = $('#calShiftModal').data('date');
+        const selected = [];
+        $('#calShiftOptions input:checked').each(function() { selected.push($(this).val()); });
+
+        const payload = { user_id: currentUser.user_id, date: dateStr, shifts: selected };
+        
+        $('#calShiftModal').addClass('hidden');
+        $('#loading').removeClass('hidden').addClass('flex');
+        
+        google.script.run.withSuccessHandler(res => {
+            const response = JSON.parse(res);
+            if(response.isOk) { renderCalendar(); } else { Swal.fire({icon:'error', title:'Error', text:response.message}); $('#loading').addClass('hidden').removeClass('flex'); }
+        }).saveDutyRecord(JSON.stringify(payload));
+    }
+
+
+    // ==================== ADMIN ADVANCE SCHEDULE ====================
+    function openAdminScheduleModal() {
+        adminCalDate = new Date();
+        $('#adminScheduleModal').removeClass('hidden');
+        
+        // Fetch users if not loaded
+        if (allUsersList.length === 0) {
+            $('#loading').removeClass('hidden').addClass('flex');
+            google.script.run.withSuccessHandler(res => {
+                allUsersList = JSON.parse(res);
+                populateUserDropdown();
+                fetchAdminScheduleData();
+            }).getAllUsers();
+        } else {
+            fetchAdminScheduleData();
+        }
+    }
+
+    function populateUserDropdown() {
+        const select = $('#shiftUserSelect');
+        select.empty();
+        select.append('<option value="" disabled selected>เลือกผู้ปฏิบัติงาน...</option>');
+        allUsersList.forEach(u => {
+            select.append(`<option value="${u.user_id}" data-name="${u.name}">${u.name}</option>`);
+        });
+    }
+
+    function changeAdminMonth(step) {
+        adminCalDate.setMonth(adminCalDate.getMonth() + step);
+        fetchAdminScheduleData();
+    }
+
+    function fetchAdminScheduleData() {
+        const m = adminCalDate.getMonth();
+        const y = adminCalDate.getFullYear();
+        const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+        
+        $('#adminCalMonthYear').text(`${thaiMonths[m]} ${y + 543}`);
+        $('#summaryMonthText').text(`${thaiMonths[m]} ${y + 543}`);
+
+        $('#loading').removeClass('hidden').addClass('flex');
+        google.script.run.withSuccessHandler(res => {
+            $('#loading').addClass('hidden').removeClass('flex');
+            adminScheduleData = JSON.parse(res);
+            renderAdminCalendar(m, y);
+            renderAdminSummary();
+        }).getAdvanceSchedule(m + 1, y);
+    }
+
+    function renderAdminCalendar(m, y) {
+        const grid = $('#adminCalendarGrid');
+        grid.empty();
+        const firstDay = new Date(y, m, 1).getDay();
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+        // Fill empty start days
+        for (let i = 0; i < firstDay; i++) { grid.append('<div class="admin-calendar-day empty-day bg-transparent border-0"></div>'); }
+
+        // Group data by date
+        const dataByDate = {};
+        adminScheduleData.forEach(item => {
+            if(!dataByDate[item.date]) dataByDate[item.date] = [];
+            dataByDate[item.date].push(item);
+        });
+
+        // Setup variables for Today Highlight checking
+        const today = new Date();
+        const isCurrentMonthAdmin = today.getMonth() === m && today.getFullYear() === y;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateKey = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const currentDayOfWeek = new Date(y, m, d).getDay();
+            let dayClass = "";
+            let holidayHtml = "";
+            
+            if (currentDayOfWeek === 0 || currentDayOfWeek === 6) dayClass = "day-weekend";
+            if (thaiHolidays[dateKey]) { 
+                dayClass += " day-holiday"; 
+                holidayHtml += `<div class="holiday-label text-rose-500">${thaiHolidays[dateKey]}</div>`; 
+            }
+
+            // --- TODAY HIGHLIGHT LOGIC ---
+            const isTodayAdmin = isCurrentMonthAdmin && today.getDate() === d;
+            let todayHighlightClass = "";
+            if (isTodayAdmin) {
+                todayHighlightClass = "ring-2 ring-emerald-500 ring-inset bg-emerald-50/50 dark:bg-emerald-900/30 rounded-xl relative overflow-hidden";
+                holidayHtml += `<div class="absolute top-0 right-0 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-bl-lg z-10 shadow-sm">วันนี้</div>`;
+            }
+            // ------------------------------
+
+            const dayRecords = dataByDate[dateKey] || [];
+            let tagsHtml = '';
+            
+            dayRecords.forEach(rec => {
+                let tagColor = "bg-slate-500";
+                if(rec.shift_type === 'เจาะเลือดเช้า') tagColor = "tag-blood";
+                else if(rec.shift_type === 'เวรแล็บ') tagColor = "tag-lab";
+                else if(rec.shift_type === 'เวร HPV') tagColor = "tag-hpv";
+                
+                tagsHtml += `
+                <div class="admin-shift-tag ${tagColor} flex justify-between items-center" onclick="openManageShiftModal(event, '${dateKey}', '${rec.id}')">
+                    <span class="truncate pr-1">${rec.name.split(' ')[0]}</span>
+                    <span class="shrink-0 opacity-90">${rec.hours}</span>
+                </div>`;
+            });
+
+            // Click cell to add (อัพเดตใส่ todayHighlightClass และ relative)
+            const cellHtml = `
+                <div class="admin-calendar-day ${dayClass} ${todayHighlightClass}" onclick="openManageShiftModal(event, '${dateKey}', null)">
+                    <div class="text-center font-bold pb-1 mb-1 border-b border-slate-100 dark:border-slate-700 text-slate-700 dark:text-slate-300 relative z-10">
+                        ${d} ${holidayHtml}
+                    </div>
+                    <div class="flex flex-col gap-[2px] relative z-20">
+                        ${tagsHtml}
+                    </div>
+                </div>
+            `;
+            grid.append(cellHtml);
+        }
+        
+        // Fill empty end days
+        const totalCellsFilled = firstDay + daysInMonth;
+        const remainingCells = 42 - totalCellsFilled;
+        for(let i=0; i<remainingCells; i++) { grid.append('<div class="admin-calendar-day empty-day bg-transparent border-0"></div>'); }
+    }
+
+    function renderAdminSummary() {
+        const body = $('#adminSummaryBody');
+        const foot = $('#adminSummaryFoot');
+        body.empty();
+        foot.empty();
+
+        if (adminScheduleData.length === 0) {
+            body.append('<tr><td colspan="4" class="px-4 py-8 text-center text-slate-400">ยังไม่มีข้อมูลเวรในเดือนนี้</td></tr>');
+            return;
+        }
+
+        // Group by user
+        const summary = {};
+        let grandTotalHours = 0;
+        
+        adminScheduleData.forEach(r => {
+            if(!summary[r.user_id]) {
+                summary[r.user_id] = { name: r.name, totalHours: 0 };
+            }
+            summary[r.user_id].totalHours += r.hours;
+            grandTotalHours += r.hours;
+        });
+
+        // Render rows
+        for (const [uid, data] of Object.entries(summary)) {
+            const income = data.totalHours * 81.25;
+            body.append(`
+                <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                    <td class="px-4 py-2 font-medium text-slate-700 dark:text-slate-200">${data.name}</td>
+                    <td class="px-4 py-2 text-center text-slate-600 dark:text-slate-300">${data.totalHours}</td>
+                    <td class="px-4 py-2 text-right text-slate-400">81.25</td>
+                    <td class="px-4 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">${income.toLocaleString('th-TH', {minimumFractionDigits: 2})}</td>
+                </tr>
+            `);
+        }
+
+        // Render footer
+        const grandTotalIncome = grandTotalHours * 81.25;
+        foot.append(`
+            <tr>
+                <td class="px-4 py-3 text-right text-emerald-800 dark:text-emerald-200 uppercase">ยอดรวมทั้งหมด</td>
+                <td class="px-4 py-3 text-center text-emerald-800 dark:text-emerald-200">${grandTotalHours}</td>
+                <td class="px-4 py-3"></td>
+                <td class="px-4 py-3 text-right text-emerald-800 dark:text-emerald-200">${grandTotalIncome.toLocaleString('th-TH', {minimumFractionDigits: 2})}</td>
+            </tr>
+        `);
+    }
+
+    // --- ตรรกะจัดการปุ่มและชั่วโมง เมื่อเลือกประเภทเวร ---
+    $('#shiftTypeSelect').change(function() {
+        const val = $(this).val();
+        if(val === 'เจาะเลือดเช้า') {
+            $('#shiftHours').val(1);
+            $('#quickHoursButtons').addClass('hidden'); // ซ่อนปุ่ม 8/16
+        } else if(val === 'เวรแล็บ' || val === 'เวร HPV') {
+            $('#shiftHours').val(8);
+            $('#quickHoursButtons').removeClass('hidden'); // แสดงปุ่ม 8/16
+        } else {
+            $('#quickHoursButtons').addClass('hidden');
+        }
+    });
+
+    function openManageShiftModal(e, dateStr, recordId) {
+        e.stopPropagation(); // Prevent bubbling to cell if tag clicked
+        
+        $('#manageShiftForm')[0].reset();
+        $('#shiftDateHidden').val(dateStr);
+        $('#quickHoursButtons').addClass('hidden'); // เริ่มต้นซ่อนปุ่มไว้ก่อน
+        
+        // Format date for display
+        const dObj = new Date(dateStr);
+        const thaiMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+        $('#shiftDateDisplay').text(`วันที่ ${dObj.getDate()} ${thaiMonths[dObj.getMonth()]} ${dObj.getFullYear() + 543}`);
+
+        if (recordId) {
+            // Edit Mode
+            const rec = adminScheduleData.find(r => r.id === recordId);
+            if(rec) {
+                $('#manageShiftTitle').text('แก้ไขเวรล่วงหน้า');
+                $('#shiftRecordId').val(rec.id);
+                $('#shiftUserSelect').val(rec.user_id);
+                $('#shiftTypeSelect').val(rec.shift_type);
+                $('#shiftHours').val(rec.hours); // โหลดชั่วโมงเดิมกลับมา
+                $('#btnDeleteShift').removeClass('hidden');
+
+                // เช็คว่าถ้าเป็นเวรที่อนุญาตให้มีปุ่ม ก็ให้โชว์ปุ่มได้เลย
+                if(rec.shift_type === 'เวรแล็บ' || rec.shift_type === 'เวร HPV') {
+                    $('#quickHoursButtons').removeClass('hidden');
+                }
+            }
+        } else {
+            // Add Mode
+            $('#manageShiftTitle').text('เพิ่มเวรล่วงหน้า');
+            $('#shiftRecordId').val('');
+            $('#btnDeleteShift').addClass('hidden');
+        }
+
+        $('#manageShiftModal').removeClass('hidden');
+    }
+
+    $('#manageShiftForm').submit(function(e) {
+        e.preventDefault();
+        const userId = $('#shiftUserSelect').val();
+        const name = $('#shiftUserSelect option:selected').data('name');
+
+        const payload = {
+            id: $('#shiftRecordId').val(), // Will be empty if new
+            user_id: userId,
+            name: name,
+            date: $('#shiftDateHidden').val(),
+            shift_type: $('#shiftTypeSelect').val(),
+            hours: parseFloat($('#shiftHours').val())
+        };
+
+        $('#manageShiftModal').addClass('hidden');
+        $('#loading').removeClass('hidden').addClass('flex');
+
+        google.script.run.withSuccessHandler(res => {
+            const response = JSON.parse(res);
+            if(response.isOk) {
+                fetchAdminScheduleData(); // Refresh calendar & summary
+            } else {
+                $('#loading').addClass('hidden').removeClass('flex');
+                Swal.fire('Error', response.message, 'error');
+            }
+        }).saveAdvanceSchedule(JSON.stringify(payload));
+    });
+
+    function deleteAdminShift() {
+        const id = $('#shiftRecordId').val();
+        if(!id) return;
+
+        Swal.fire({
+            title: 'ยืนยันการลบ',
+            text: "ต้องการลบรายการเวรนี้ใช่หรือไม่?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'ลบเลย'
+        }).then((result) => {
+            if(result.isConfirmed) {
+                $('#manageShiftModal').addClass('hidden');
+                $('#loading').removeClass('hidden').addClass('flex');
+                google.script.run.withSuccessHandler(res => {
+                    const response = JSON.parse(res);
+                    if(response.isOk) fetchAdminScheduleData();
+                    else {
+                        $('#loading').addClass('hidden').removeClass('flex');
+                        Swal.fire('Error', response.message, 'error');
+                    }
+                }).deleteAdvanceSchedule(id);
+            }
+        });
+    }
+
+    // --- PROFILE IMAGE ---
+    function openProfileModal() {
+        $('#profileInput').val(''); 
+        if (currentUser && currentUser.profile_image) {
+            $('#previewImg').attr('src', currentUser.profile_image).removeClass('hidden');
+            $('#previewPlaceholder').addClass('hidden');
+        } else {
+            $('#previewImg').addClass('hidden');
+            $('#previewPlaceholder').removeClass('hidden');
+        }
+        $('#profileModal').removeClass('hidden');
+    }
+
+    $('#profileInput').change(function() {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                $('#previewPlaceholder').addClass('hidden');
+                $('#previewImg').attr('src', e.target.result).removeClass('hidden');
+            }
+            reader.readAsDataURL(this.files[0]);
+        }
+    });
+
+    function uploadProfile() {
+        const file = $('#profileInput')[0].files[0];
+        if (!file) { Swal.fire('กรุณาเลือกรูปภาพ'); return; }
+        
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = function() {
+            const base64 = reader.result;
+            $('#loading').removeClass('hidden').addClass('flex');
+            google.script.run.withSuccessHandler(res => {
+                $('#loading').addClass('hidden').removeClass('flex');
+                const response = JSON.parse(res);
+                if (response.isOk) {
+                    currentUser.profile_image = response.url;
+                    localStorage.setItem('fineStampUser', JSON.stringify(currentUser));
+                    showMainScreen();
+                    $('#profileModal').addClass('hidden');
+                    Swal.fire({icon:'success', title:'บันทึกรูปโปรไฟล์เรียบร้อย', showConfirmButton: false, timer: 1500});
+                } else { Swal.fire({icon:'error', title:'Error', text: response.message}); }
+            }).saveProfileImage(currentUser.user_id, base64);
+        }
+    }
+
+    // --- REPORT LOGIC ---
+    function openReportModal() {
+        const groupSelect = $('#reportGroup');
+        groupSelect.empty();
+        groupSelect.append('<option value="" disabled selected>เลือกกลุ่มงาน</option>');
+        
+        if (currentUser.work_groups.includes(DEPT_AP)) { groupSelect.append(new Option(DEPT_AP, DEPT_AP)); }
+        if (currentUser.work_groups.includes(DEPT_CP)) { groupSelect.append(new Option(DEPT_CP, DEPT_CP)); }
+        if (groupSelect.children('option').length === 2) {
+            groupSelect.find('option:eq(1)').prop('selected', true);
+            groupSelect.trigger('change');
+        }
+
+        const userSelectContainer = $('#reportUserContainer');
+        const userSelect = $('#reportUser');
+        
+        if (currentUser.role === 'Admin') { userSelectContainer.removeClass('hidden'); } 
+        else { userSelectContainer.addClass('hidden'); userSelect.empty(); }
+
+        $('#reportModal').removeClass('hidden');
+    }
+
+    $('#reportGroup').change(function() {
+        if (currentUser.role !== 'Admin') return;
+        const selectedGroup = $(this).val();
+        const userSelect = $('#reportUser');
+        userSelect.empty();
+        userSelect.append('<option value="ALL">กำลังโหลด...</option>');
+        userSelect.prop('disabled', true);
+
+        google.script.run.withSuccessHandler(res => {
+            const users = JSON.parse(res);
+            userSelect.empty();
+            userSelect.append('<option value="ALL">รวมทุกคน</option>');
+            users.forEach(u => { userSelect.append(new Option(u.name, u.user_id)); });
+            userSelect.prop('disabled', false);
+        }).getUsersByGroup(selectedGroup);
+    });
+    
+    function fetchReport() {
+        const group = $('#reportGroup').val();
+        if (!group) { Swal.fire('กรุณาเลือกกลุ่มงาน'); return; }
+
+        const m = $('#reportMonth').val();
+        const y = $('#reportYear').val();
+        
+        let userIdToFilter = "";
+        if (currentUser.role === 'Admin') { userIdToFilter = $('#reportUser').val() || "ALL"; } 
+        else { userIdToFilter = currentUser.user_id; }
+
+        $('#loading').removeClass('hidden').addClass('flex');
+        google.script.run.withSuccessHandler(res => {
+            $('#loading').addClass('hidden').removeClass('flex');
+            const response = JSON.parse(res);
+            if (response.isOk) { 
+                globalReportData = response.data;
+                globalReportMonth = $("#reportMonth option:selected").text();
+                globalReportYear = parseInt(y) + 543;
+                renderReportPages(response.data, m, y); 
+            } 
+            else { Swal.fire({icon: 'error', title: 'เกิดข้อผิดพลาด', text: response.message}); }
+        }).getMonthlyReport(m, y, group, userIdToFilter);
+    }
+
+    function renderReportPages(data, m, y) {
+        const container = $('#reportContent');
+        container.empty();
+        
+        const thaiMonth = $("#reportMonth option:selected").text();
+        const thaiYear = parseInt(y) + 543;
+        const fullDateStr = `ประจำเดือน ${thaiMonth} พ.ศ. ${thaiYear}`;
+
+        if (data.length === 0) {
+            container.html('<div class="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 text-center text-slate-400 w-full max-w-4xl">ไม่พบข้อมูลตามเงื่อนไข</div>');
+            return;
+        }
+
+        const itemsPerPage = 30;
+        const totalPages = Math.ceil(data.length / itemsPerPage);
+
+        for (let i = 0; i < totalPages; i++) {
+            const start = i * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageData = data.slice(start, end);
+
+            const pageHtml = `
+                <div class="sheet-page">
+                    <div class="report-header">
+                        <span class="report-title">รายงานสรุปเวลาปฏิบัติงานรายเดือน</span>
+                        <span class="report-subtitle">${fullDateStr}</span>
+                    </div>
+                    
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">วัน เดือน ปี</th>
+                                <th style="width: 30%;">ชื่อ สกุล</th>
+                                <th style="width: 15%; text-align: center;">เวลามา</th>
+                                <th style="width: 15%; text-align: center;">เวลากลับ</th>
+                                <th style="width: 20%; text-align: right;">ลายมือชื่อ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${pageData.map(row => `
+                                <tr>
+                                    <td>${row.date}</td>
+                                    <td>${row.name}</td>
+                                    <td style="text-align: center;" class="text-teal-700 font-medium">${row.in}</td>
+                                    <td style="text-align: center;" class="text-rose-700 font-medium">${row.out}</td>
+                                    <td style="text-align: right;" class="text-slate-400">${row.name.split(' ')[0]}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            container.append(pageHtml);
+        }
+    }
+
+    function exportToExcel() {
+        if (!globalReportData || globalReportData.length === 0) {
+            Swal.fire('ไม่มีข้อมูลให้ Export', 'กรุณากดค้นหาข้อมูลก่อน', 'warning');
+            return;
+        }
+
+        const title1 = ["รายงานสรุปเวลาปฏิบัติงานรายเดือน"];
+        const title2 = [`ประจำเดือน ${globalReportMonth} พ.ศ. ${globalReportYear}`];
+        const header = ["วัน เดือน ปี", "ชื่อ สกุล", "เวลามา", "เวลากลับ", "ลายมือชื่อ"];
+
+        const dataRows = globalReportData.map(row => {
+            return [ row.date, row.name, row.in, row.out, row.name.split(' ')[0] ];
+        });
+
+        const finalData = [ title1, title2, [], header, ...dataRows ];
+        const ws = XLSX.utils.aoa_to_sheet(finalData);
+
+        if(!ws['!merges']) ws['!merges'] = [];
+        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }); 
+        ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }); 
+
+        ws['!cols'] = [ { wch: 20 }, { wch: 25 }, { wch: 10 }, { wch: 10 }, { wch: 15 } ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        const filename = `FineStamp_Report_${globalReportMonth}_${globalReportYear}.xlsx`;
+        XLSX.writeFile(wb, filename);
+    }
+
+    // --- CHECK IN/OUT & HISTORY ---
+    
+    function getSkeletonHTML() {
+        let html = '';
+        for(let i=0; i<5; i++) {
+            html += `
+                <div class="p-4 border-b border-slate-50 dark:border-slate-700 flex justify-between items-center">
+                    <div class="w-2/3">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="h-4 w-24 skeleton"></div>
+                            <div class="h-4 w-12 skeleton rounded-full"></div>
+                        </div>
+                        <div class="h-3 w-32 skeleton"></div>
+                    </div>
+                    <div class="h-6 w-16 skeleton rounded"></div>
+                </div>
+            `;
+        }
+        return html;
+    }
+
+    function loadHistory() {
+        $('#historyList').html(getSkeletonHTML());
+        
+        const btn = $('button[onclick="loadHistory()"]');
+        btn.html('<svg class="animate-spin h-4 w-4 text-teal-600 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>');
+        btn.prop('disabled', true);
+
+        const now = new Date();
+        const m = now.getMonth() + 1;
+        const y = now.getFullYear();
+
+        google.script.run.withSuccessHandler(res => {
+            userRecords = JSON.parse(res);
+            renderHistory(); 
+            
+            setTimeout(() => {
+                btn.html('Refresh');
+                btn.prop('disabled', false);
+            }, 300);
+        }).getUserRecords(currentUser.user_id, m, y);
+    }
+
+    function renderHistory() {
+        const list = $('#historyList');
+        list.empty();
+        if(userRecords.length === 0) {
+            list.html('<div class="p-8 text-center text-slate-400">ไม่พบประวัติในเดือนนี้</div>');
+            return;
+        }
+        userRecords.forEach(rec => {
+            const workTypeBadge = rec.work_type ? `<span class="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">${rec.work_type}</span>` : '';
+            const clockOutDisplay = rec.clock_out_time 
+                ? `<span class="text-teal-600 dark:text-teal-400 font-bold bg-teal-50 dark:bg-teal-900/30 px-2 py-0.5 rounded border border-teal-100 dark:border-teal-800">${rec.clock_out_time}</span>` 
+                : `<span class="text-orange-400 text-xs italic">Pending</span>`;
+
+            const html = `
+                <div class="p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition border-b border-slate-50 dark:border-slate-700 last:border-0 flex flex-col sm:flex-row sm:justify-between sm:items-center animate-[fadeIn_0.3s_ease-out]">
+                    <div class="mb-2 sm:mb-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-700 dark:text-slate-200">${rec.clock_in_date}</span>
+                            ${workTypeBadge}
+                        </div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400">
+                            เข้า: <span class="font-semibold text-slate-600 dark:text-slate-300">${rec.clock_in_time}</span>
+                            <span class="mx-1 text-slate-300 dark:text-slate-600">|</span>
+                            ออก: <span class="font-semibold text-slate-600 dark:text-slate-300">${rec.clock_out_time || '-'}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 sm:justify-end justify-between border-t border-slate-100 sm:border-0 pt-2 sm:pt-0 dark:border-slate-700">
+                        ${clockOutDisplay}
+                        <div class="flex gap-2 items-center shrink-0">
+                            <button onclick="openEditRecordModal('${rec.id}')" class="w-8 h-8 flex items-center justify-center shrink-0 text-amber-500 hover:bg-amber-50 dark:hover:bg-slate-600 rounded-lg transition" title="แก้ไข">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                            <button onclick="deleteRecord('${rec.id}')" class="w-8 h-8 flex items-center justify-center shrink-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-slate-600 rounded-lg transition" title="ลบ">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            list.append(html);
+        });
+    }
+
+    // --- EDIT & DELETE RECORD ---
+    function openEditRecordModal(recordId) {
+        const rec = userRecords.find(r => r.id === recordId);
+        if(!rec) return;
+
+        $('#editRecordId').val(rec.id);
+        $('#editInDate').val(rec.clock_in_date);
+        $('#editInTime').val(rec.clock_in_time);
+        $('#editOutDate').val(rec.clock_out_date || "");
+        $('#editOutTime').val(rec.clock_out_time || "");
+        
+        const editWorkTypeSelect = $('#editWorkType');
+        editWorkTypeSelect.empty(); 
+        
+        editWorkTypeSelect.append('<option value="">- เลือกประเภทเวร (หากมี) -</option>'); 
+
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+
+        if (isCP) {
+            editWorkTypeSelect.append('<option value="เจาะเลือดเช้า">เจาะเลือดเช้า</option>');
+            editWorkTypeSelect.append('<option value="เวรแล็บ">เวรแล็บ</option>');
+        }
+        if (isAP) {
+            editWorkTypeSelect.append('<option value="เวร HPV">เวร HPV</option>');
+        }
+
+        if(rec.work_type === "") $('#editWorkType').val("");
+        else $('#editWorkType').val(rec.work_type);
+
+        $('#editRecordModal').removeClass('hidden');
+    }
+
+    $('#editRecordForm').submit(function(e) {
+        e.preventDefault();
+        const recordId = $('#editRecordId').val();
+        let workType = $('#editWorkType').val();
+
+        const payload = {
+            id: recordId,
+            clock_in_date: $('#editInDate').val(),
+            clock_in_time: $('#editInTime').val(),
+            clock_out_date: $('#editOutDate').val(),
+            clock_out_time: $('#editOutTime').val(),
+            work_type: workType,
+            is_manual_edit: true 
+        };
+        
+        saveRecord(payload, '#editRecordModal');
+    });
+
+    function deleteRecord(recordId) {
+        Swal.fire({
+            title: 'ยืนยันการลบ?',
+            text: "หากลบแล้วจะไม่สามารถกู้คืนได้!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: 'ใช่, ลบเลย!',
+            cancelButtonText: 'ยกเลิก'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $('#loading').removeClass('hidden').addClass('flex');
+                const payload = { record_id: recordId, user_id: currentUser.user_id };
+                
+                google.script.run.withSuccessHandler(res => {
+                    $('#loading').addClass('hidden').removeClass('flex');
+                    const response = JSON.parse(res);
+                    if(response.isOk) {
+                        Swal.fire({icon: 'success', title: 'ลบสำเร็จ', showConfirmButton: false, timer: 1000});
+                        loadHistory();
+                    } else {
+                        Swal.fire('Error', response.message, 'error');
+                    }
+                }).deleteTimeRecord(JSON.stringify(payload));
+            }
+        });
+    }
+
+    // --- VERTICAL SLIDER LOGIC ---
+    function setupVerticalSlider(sliderId, formId, direction) {
+        const container = document.getElementById(sliderId);
+        if(!container) return;
+        const form = $(formId);
+
+        if(container.cleanup) container.cleanup();
+
+        const thumb = container.querySelector('.v-slider-thumb');
+        const fill = container.querySelector('.v-slider-fill');
+        const text = container.querySelector('.v-slider-text');
+
+        let isDragging = false;
+        let startY = 0;
+        let currentY = 0;
+        let maxSlide = 0;
+
+        function resetSlider() {
+            isDragging = false;
+            thumb.style.transform = `translateY(0)`;
+            thumb.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            thumb.style.backgroundColor = 'white';
+            thumb.querySelector('svg').style.color = '#475569';
+            fill.style.height = '0px';
+            fill.style.transition = 'height 0.3s ease-out';
+            text.style.opacity = 1;
+        }
+
+        function onStart(e) {
+            isDragging = true;
+            startY = e.type.includes('mouse') ? e.pageY : e.touches[0].clientY;
+            let containerHeight = container.offsetHeight;
+            maxSlide = containerHeight - thumb.offsetHeight - 8; 
+            
+            thumb.style.transition = 'none';
+            fill.style.transition = 'none';
+        }
+
+        function onMove(e) {
+            if (!isDragging) return;
+            const pageY = e.type.includes('mouse') ? e.pageY : e.touches[0].clientY;
+            let moveY = pageY - startY;
+
+            if (direction === 'up') {
+                if (moveY > 0) moveY = 0;
+                if (moveY < -maxSlide) moveY = -maxSlide;
+            } else {
+                if (moveY < 0) moveY = 0;
+                if (moveY > maxSlide) moveY = maxSlide;
+            }
+
+            thumb.style.transform = `translateY(${moveY}px)`;
+            const progress = Math.abs(moveY) / maxSlide;
+            fill.style.height = `${Math.abs(moveY) + (thumb.offsetHeight/2)}px`; 
+            text.style.opacity = 1 - (progress * 1.5);
+            currentY = moveY;
+        }
+
+        function onEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            if (Math.abs(currentY) >= maxSlide - 10) { 
+                const finalPos = direction === 'up' ? -maxSlide : maxSlide;
+                thumb.style.transform = `translateY(${finalPos}px)`;
+                fill.style.height = '100%';
+                
+                if(direction === 'up') { thumb.style.backgroundColor = '#059669'; } 
+                else { thumb.style.backgroundColor = '#e11d48'; }
+                thumb.querySelector('svg').style.color = 'white';
+                
+                setTimeout(() => {
+                    form.trigger('submit');
+                    setTimeout(resetSlider, 1000); 
+                }, 250);
+            } else { resetSlider(); }
+        }
+
+        thumb.addEventListener('mousedown', onStart);
+        thumb.addEventListener('touchstart', onStart, {passive: true});
+        
+        const globalOnMove = (e) => { if(isDragging) onMove(e); };
+        const globalOnEnd = (e) => { if(isDragging) onEnd(e); };
+
+        document.addEventListener('mousemove', globalOnMove);
+        document.addEventListener('touchmove', globalOnMove, {passive: true});
+        document.addEventListener('mouseup', globalOnEnd);
+        document.addEventListener('touchend', globalOnEnd);
+        
+        container.cleanup = () => {
+            thumb.removeEventListener('mousedown', onStart);
+            thumb.removeEventListener('touchstart', onStart);
+            document.removeEventListener('mousemove', globalOnMove);
+            document.removeEventListener('touchmove', globalOnMove);
+            document.removeEventListener('mouseup', globalOnEnd);
+            document.removeEventListener('touchend', globalOnEnd);
+        };
+    }
+
+    function openCheckInModal() {
+        const now = getNow();
+        $('#inDate').val(now.date);
+        $('#inTime').val(now.time);
+        
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+        $('.option-cp').toggle(isCP);
+        $('.option-ap').toggle(isAP);
+        
+        if(isCP || isAP) {
+            $('#checkInWorkTitle, #checkInWorkOptionsInner').removeClass('hidden');
+            $('input[name="workTypeIn"]').prop('checked', false); 
+            if (isCP) $('input[name="workTypeIn"][value="เจาะเลือดเช้า"]').prop('checked', true);
+            else if (isAP) $('input[name="workTypeIn"][value="เวร HPV"]').prop('checked', true);
+        } else { $('#checkInWorkTitle, #checkInWorkOptionsInner').addClass('hidden'); }
+        
+        const oldSlider = document.getElementById('checkInSlider');
+        if(oldSlider.cleanup) oldSlider.cleanup();
+        const newSlider = oldSlider.cloneNode(true);
+        oldSlider.parentNode.replaceChild(newSlider, oldSlider);
+        
+        setupVerticalSlider('checkInSlider', '#checkInForm', 'up');
+        $('#checkInModal').removeClass('hidden');
+    }
+
+    function openCheckOutModal() {
+        const now = getNow();
+        $('#outDate').val(now.date);
+        $('#outTime').val(now.time);
+
+        const todayRecord = userRecords.find(r => r.clock_in_date === now.date && (!r.clock_out_time || r.clock_out_time === ""));
+        if(todayRecord) {
+            $('#outInDate').val(todayRecord.clock_in_date);
+            $('#outInTime').val(todayRecord.clock_in_time);
+            $('#checkOutForm').data('recordId', todayRecord.id); 
+            $('#autoFillBadge').addClass('hidden');
+            $('.check-in-notice').addClass('hidden');
+        } else {
+            $('#outInDate').val(now.date);
+            $('#outInTime').val('16:00');
+            $('#checkOutForm').data('recordId', null); 
+            $('#autoFillBadge').removeClass('hidden');
+            $('.check-in-notice').removeClass('hidden');
+        }
+
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+        $('.option-cp').toggle(isCP);
+        $('.option-ap').toggle(isAP);
+        
+        if(isCP || isAP) {
+            $('#checkOutWorkTitle, #checkOutWorkOptionsInner').removeClass('hidden');
+             $('input[name="workTypeOut"]').prop('checked', false);
+             if (isCP) $('input[name="workTypeOut"][value="เจาะเลือดเช้า"]').prop('checked', true);
+             else if (isAP) $('input[name="workTypeOut"][value="เวร HPV"]').prop('checked', true);
+        } else { $('#checkOutWorkTitle, #checkOutWorkOptionsInner').addClass('hidden'); }
+
+        const oldSlider = document.getElementById('checkOutSlider');
+        if(oldSlider.cleanup) oldSlider.cleanup();
+        const newSlider = oldSlider.cloneNode(true);
+        oldSlider.parentNode.replaceChild(newSlider, oldSlider);
+        
+        setupVerticalSlider('checkOutSlider', '#checkOutForm', 'down');
+        $('#checkOutModal').removeClass('hidden');
+    }
+
+    $('#checkInForm').submit(function(e) {
+        e.preventDefault();
+        const inDate = $('#inDate').val();
+        const inTime = $('#inTime').val();
+        let outDate = "";
+        let outTime = "";
+        let workType = "";
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+        if(isCP || isAP) {
+            workType = $('input[name="workTypeIn"]:checked').val();
+            if(workType === "เจาะเลือดเช้า") { outDate = inDate; outTime = "08:00"; }
+        }
+        saveRecord({ clock_in_date: inDate, clock_in_time: inTime, clock_out_date: outDate, clock_out_time: outTime, work_type: workType || "" }, '#checkInModal');
+    });
+
+    $('#checkOutForm').submit(function(e) {
+        e.preventDefault();
+        const recordId = $('#checkOutForm').data('recordId'); 
+        let workType = "";
+        const isCP = currentUser.work_groups.includes(DEPT_CP);
+        const isAP = currentUser.work_groups.includes(DEPT_AP);
+        if(isCP || isAP) workType = $('input[name="workTypeOut"]:checked').val();
+        
+        const payload = {
+            id: recordId, 
+            clock_in_date: $('#outInDate').val(),
+            clock_in_time: $('#outInTime').val(),
+            clock_out_date: $('#outDate').val(),
+            clock_out_time: $('#outTime').val(),
+            work_type: workType || ""
+        };
+        saveRecord(payload, '#checkOutModal');
+    });
+
+    $('input[name="workTypeOut"]').change(function() {
+        const type = $(this).val();
+        const recordId = $('#checkOutForm').data('recordId');
+        if (!recordId && (type === 'เวรแล็บ' || type === 'เวร HPV')) {
+            const now = getNow();
+            $('#outInDate').val(now.date);
+            $('#outInTime').val('16:00');
+            $('#autoFillBadge').removeClass('hidden');
+        }
+    });
+
+    function saveRecord(data, modalId) {
+        $('#loading').removeClass('hidden').addClass('flex');
+        
+        const fullPayload = {
+            ...data,
+            id: data.id || 'R_' + Date.now(),
+            user_id: currentUser.user_id,
+            first_name: currentUser.first_name,
+            last_name: currentUser.last_name,
+            work_groups: currentUser.work_groups
+        };
+
+        google.script.run.withSuccessHandler(res => {
+            $('#loading').addClass('hidden').removeClass('flex');
+            const response = JSON.parse(res);
+            if(response.isOk) {
+                $(modalId).addClass('hidden');
+                setTimeout(() => {
+                    Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', showConfirmButton: false, timer: 1000 });
+                    loadHistory();
+                }, 300);
+            } else { Swal.fire({ icon: 'error', title: 'Error', text: response.message }); }
+        }).saveTimeRecord(JSON.stringify(fullPayload));
+    }
+</script>
