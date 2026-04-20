@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="th" class=""> 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FineStamp - Lab Attendance</title>
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0d9488">
+    <meta name="application-name" content="FineStamp">
+    <meta name="apple-mobile-web-app-title" content="FineStamp">
+
+    <link rel="icon" type="image/png" href="https://img2.pic.in.th/FineStamp---Logo-bg-remove.png">
+    <link rel="apple-touch-icon" href="https://img2.pic.in.th/FineStamp---Logo-bg-remove.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class', 
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#151f2e' } 
+                    },
+                    animation: {
+                        'spin-fast': 'spin 0.7s linear infinite', 
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <?!= include('css'); ?>
+
+</head>
+<body class="text-slate-800 dark:text-slate-200 dark:bg-slate-900 h-screen flex flex-col overflow-hidden transition-colors duration-300">
+
+    <div id="bg-layer"></div>
+
+    <div id="loading" class="fixed inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm z-[100] hidden flex-col items-center justify-center">
+        <div class="relative">
+            <div class="animate-spin rounded-full h-16 w-16 border-4 border-slate-200 dark:border-slate-700 border-t-teal-600 dark:border-t-teal-400 will-change-transform"></div>
+        </div>
+        <p class="text-teal-700 dark:text-teal-400 font-semibold mt-4 animate-pulse">Processing...</p>
+    </div>
+
+    <div id="loginScreen" class="flex-grow flex items-center justify-center p-4 relative overflow-y-auto touch-scroll">
+        <div class="glass-panel w-full max-w-sm rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] p-8 z-10 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-teal-500 to-cyan-500"></div>
+            <div class="text-center mb-6 mt-2">
+                <div class="relative h-32 mb-4 flex items-center justify-center">
+                    <img src="https://img2.pic.in.th/FineStamp---Logo-bg-remove.png" alt="FineStamp Logo" class="h-full w-auto rounded-2xl shadow-lg hover:scale-105 transition-transform duration-500">
+                </div>
+                <h1 class="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">FineStamp</h1>
+                <p class="text-slate-500 dark:text-slate-400 text-sm">Clinical Pathology & Medical Tech</p>
+            </div>
+            
+            <form id="loginForm" class="space-y-4">
+                <input type="text" id="loginId" class="w-full pl-4 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-teal-500 outline-none transition text-slate-800 dark:text-white" placeholder="User ID" required>
+                <input type="password" id="loginPass" class="w-full pl-4 pr-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-teal-500 outline-none transition text-slate-800 dark:text-white" placeholder="Password" required>
+                <button type="submit" class="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-teal-500/30 transition transform active:scale-95">เข้าสู่ระบบ</button>
+            </form>
+            <div class="mt-6 text-center">
+                <button onclick="$('#regModal').removeClass('hidden')" class="text-xs text-slate-500 dark:text-slate-400 font-semibold hover:text-teal-600 dark:hover:text-teal-400 transition uppercase tracking-wide">ลงทะเบียนเข้าใช้งาน</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainScreen" class="flex-grow flex-col hidden overflow-hidden relative">
+        <header class="bg-white/90 dark:bg-slate-800/90 backdrop-blur-md shadow-sm px-5 py-4 flex justify-between items-center z-10 border-b border-slate-100 dark:border-slate-700">
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+                <div onclick="openProfileModal()" class="relative group cursor-pointer">
+                    <div class="w-12 h-12 rounded-xl overflow-hidden shadow-md border-2 border-white dark:border-slate-600 ring-2 ring-teal-500/20">
+                        <img id="userAvatarImg" src="" class="w-full h-full object-cover hidden">
+                        <div id="userAvatarText" class="w-full h-full bg-gradient-to-br from-teal-500 to-cyan-600 text-white flex items-center justify-center font-bold text-xl">U</div>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h2 class="font-bold text-slate-800 dark:text-white leading-tight truncate" id="userNameDisplay">User Name</h2>
+                    <p class="text-[11px] text-teal-600 dark:text-teal-400 font-medium whitespace-normal leading-tight" id="userGroupDisplay">Department</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button onclick="openCalendarModal()" class="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded-xl flex items-center justify-center hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition shadow-sm border border-indigo-100 dark:border-indigo-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                </button>
+                <button onclick="openReportModal()" class="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 rounded-xl flex items-center justify-center hover:bg-amber-100 dark:hover:bg-amber-900/50 transition shadow-sm border border-amber-100 dark:border-amber-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                </button>
+                
+                <button onclick="openSettingsModal()" class="w-10 h-10 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition shadow-sm border border-slate-200 dark:border-slate-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+
+                <button onclick="logout()" class="w-10 h-10 bg-slate-50 dark:bg-slate-700/50 text-slate-400 dark:text-slate-400 rounded-xl flex items-center justify-center hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-900/30 transition shadow-sm border border-slate-100 dark:border-slate-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-grow overflow-y-auto touch-scroll p-4 pb-4 max-w-3xl mx-auto w-full">
+            
+            <div class="grid grid-cols-2 gap-4 mb-6 mt-2">
+                <button onclick="openCheckInModal()" class="group relative overflow-hidden bg-white dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                    <div class="absolute top-0 right-0 w-16 h-16 bg-teal-100 dark:bg-teal-900/30 rounded-bl-full -mr-8 -mt-8 opacity-50 group-hover:scale-110 transition"></div>
+                    <div class="flex flex-col items-center gap-3 relative z-10">
+                        <div class="bg-teal-100 dark:bg-teal-900/50 text-teal-600 dark:text-teal-400 p-3 rounded-full group-hover:bg-teal-600 group-hover:text-white transition-colors duration-300">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
+                        </div>
+                        <span class="text-lg font-bold text-slate-700 dark:text-slate-200 group-hover:text-teal-700 dark:group-hover:text-teal-300">เข้างาน</span>
+                    </div>
+                </button>
+                <button onclick="openCheckOutModal()" class="group relative overflow-hidden bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                     <div class="absolute top-0 right-0 w-16 h-16 bg-rose-100 dark:bg-rose-900/30 rounded-bl-full -mr-8 -mt-8 opacity-50 group-hover:scale-110 transition"></div>
+                    <div class="flex flex-col items-center gap-3 relative z-10">
+                        <div class="bg-rose-100 dark:bg-rose-900/50 text-rose-500 dark:text-rose-400 p-3 rounded-full group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        </div>
+                        <span class="text-lg font-bold text-slate-700 dark:text-slate-200 group-hover:text-rose-700 dark:group-hover:text-rose-300">ออกงาน</span>
+                    </div>
+                </button>
+            </div>
+
+            <div id="adminPanelBtn" class="hidden mb-6 space-y-3">
+                <button onclick="openReportModal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-2xl shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-3 transition transform active:scale-95">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span class="font-bold text-lg">สรุปรายเดือน (Admin)</span>
+                </button>
+
+                <button onclick="openAdminScheduleModal()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-3 transition transform active:scale-95">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span class="font-bold text-lg">จัดตารางเวรล่วงหน้า (Admin)</span>
+                </button>
+            </div>
+
+            <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        บันทึกล่าสุด
+                    </h3>
+                    <button onclick="loadHistory()" class="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 font-semibold bg-teal-50 dark:bg-teal-900/30 px-3 py-1.5 rounded-lg border border-teal-100 dark:border-teal-800 transition">Refresh</button>
+                </div>
+                <div id="historyList" class="divide-y divide-slate-100 dark:divide-slate-700 overflow-y-auto touch-scroll max-h-[400px] overscroll-contain">
+                    <div class="p-8 text-center text-slate-400 text-sm">กำลังโหลดข้อมูล...</div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 py-3 text-center z-10">
+             <div class="container mx-auto px-4">
+                <p class="text-[10px] text-slate-400 font-medium">&copy; 2026 FineStamp <span class="mx-1">•</span> Developed by <span class="text-teal-600 dark:text-teal-400">P. PURICUMPEE</span></p>
+            </div>
+        </footer>
+    </div>
+    
+    <div id="settingsModal" class="fixed inset-0 z-[70] hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-sm p-0 shadow-2xl overflow-hidden animate-slide-up">
+            <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    ตั้งค่า (Settings)
+                </h3>
+                <button onclick="$('#settingsModal').addClass('hidden')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xl font-bold">&times;</button>
+            </div>
+            
+            <div class="p-5 space-y-5 overflow-y-auto max-h-[70vh]">
+                
+                <div id="adminSettingsSection" class="hidden">
+                    <h4 class="text-xs font-bold text-indigo-500 uppercase mb-3">ตั้งค่าผู้ดูแลระบบ (Admin)</h4>
+                    
+                    <!-- Toggle 1: Email -->
+                    <div class="bg-white dark:bg-slate-700 border border-rose-200 dark:border-rose-900/50 rounded-xl p-3 flex justify-between items-center shadow-sm">
+                        <div class="flex items-center gap-3">
+                             <div class="bg-rose-50 dark:bg-rose-900/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </div>
+                            <div>
+                                <span class="font-bold text-slate-700 dark:text-slate-200 block text-sm">แจ้งเตือนเวรผ่าน Email</span>
+                                <span class="text-[10px] text-slate-400">ส่งอัตโนมัติ 05:00 น. ทุกวัน</span>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="emailNotifyToggle" class="sr-only peer" onchange="toggleEmailNotification()">
+                            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-rose-300 dark:peer-focus:ring-rose-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- Toggle 2: Telegram (New in v1.3.0) -->
+                    <div class="bg-white dark:bg-slate-700 border border-sky-200 dark:border-sky-900/50 rounded-xl p-3 flex justify-between items-center shadow-sm mt-3">
+                        <div class="flex items-center gap-3">
+                             <div class="bg-sky-50 dark:bg-sky-900/30 p-2 rounded-lg text-sky-600 dark:text-sky-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                            </div>
+                            <div>
+                                <span class="font-bold text-slate-700 dark:text-slate-200 block text-sm">แจ้งเตือนพรุ่งนี้ Telegram</span>
+                                <span class="text-[10px] text-slate-400">ส่งเข้ากลุ่ม 16:00 น. ทุกวัน</span>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="telegramNotifyToggle" class="sr-only peer" onchange="toggleTelegramNotification()">
+                            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sky-300 dark:peer-focus:ring-sky-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold text-slate-400 uppercase mb-3">การใช้งาน</h4>
+                    
+                    <div class="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex justify-between items-center shadow-sm mb-3">
+                        <div class="flex items-center gap-3">
+                             <div class="bg-teal-50 dark:bg-teal-900/30 p-2 rounded-lg text-teal-600 dark:text-teal-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clip-rule="evenodd" /></svg>
+                            </div>
+                            <div>
+                                <span class="font-bold text-slate-700 dark:text-slate-200 block text-sm">ความถนัดของมือ</span>
+                                <span class="text-[10px] text-slate-400">ปุ่มสไลด์ซ้าย/ขวา</span>
+                            </div>
+                        </div>
+                        <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg gap-1">
+                            <button id="btnLeftHand" onclick="setHandedness('left')" class="px-3 py-1.5 rounded-md text-xs font-bold text-slate-500 transition-all duration-300">ซ้าย</button>
+                            <button id="btnRightHand" onclick="setHandedness('right')" class="px-3 py-1.5 rounded-md text-xs font-bold text-slate-500 bg-white shadow-sm text-teal-600 transition-all duration-300">ขวา</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex justify-between items-center shadow-sm">
+                        <div class="flex items-center gap-3">
+                             <div class="bg-indigo-50 dark:bg-indigo-900/30 p-2 rounded-lg text-indigo-600 dark:text-indigo-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" /></svg>
+                            </div>
+                            <div>
+                                <span class="font-bold text-slate-700 dark:text-slate-200 block text-sm">Dark Mode</span>
+                                <span class="text-[10px] text-slate-400">ธีมสีเข้มสบายตา</span>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="darkModeToggle" class="sr-only peer" onchange="toggleDarkMode()">
+                            <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 dark:peer-focus:ring-teal-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold text-slate-400 uppercase mb-3">การแสดงผล</h4>
+                    <div class="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl p-4 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="font-bold text-slate-700 dark:text-slate-200 text-sm">ขนาดตัวอักษร</span>
+                            <span id="fontScaleDisplay" class="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 px-2 py-0.5 rounded">ปกติ</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-slate-400">A</span>
+                            <input type="range" id="fontScaleRange" min="1" max="5" step="1" value="3" class="flex-grow h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-600" oninput="updateFontScale(this.value)">
+                            <span class="text-lg font-bold text-slate-600 dark:text-slate-300">A</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                     <h4 class="text-xs font-bold text-slate-400 uppercase mb-3">บัญชีผู้ใช้</h4>
+                     <button onclick="openChangePassword()" class="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex justify-between items-center shadow-sm active:scale-95 transition">
+                         <div class="flex items-center gap-3">
+                             <div class="bg-orange-50 dark:bg-orange-900/30 p-2 rounded-lg text-orange-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" /></svg>
+                             </div>
+                             <div class="text-left">
+                                 <span class="font-bold text-slate-700 dark:text-slate-200 block text-sm">เปลี่ยนรหัสผ่าน</span>
+                                 <span class="text-[10px] text-slate-400">แก้ไขรหัสผ่านส่วนตัว</span>
+                             </div>
+                         </div>
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                     </button>
+                </div>
+                
+                <div class="text-center pt-2 border-t border-slate-100 dark:border-slate-700">
+                    <div class="flex justify-center mb-2">
+                        <img src="https://img2.pic.in.th/FineStamp---Logo-bg-remove.png" class="h-12 w-auto opacity-80 grayscale hover:grayscale-0 transition duration-500 cursor-pointer">
+                    </div>
+                    <p class="text-xs font-bold text-slate-500 dark:text-slate-400">FineStamp v1.3.0 AI Core</p>
+                    <p class="text-[10px] text-slate-400 mt-1">Developed by <span class="text-teal-600 dark:text-teal-400 font-semibold">P. PURICUMPEE</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="profileModal" class="fixed inset-0 z-[70] hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-slate-800 dark:text-white mb-4 text-center">เปลี่ยนรูปโปรไฟล์</h3>
+            <div class="mb-4 flex justify-center">
+                <div class="w-32 h-32 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 border-4 border-white dark:border-slate-600 shadow-lg relative">
+                    <img id="previewImg" class="w-full h-full object-cover hidden">
+                    <div id="previewPlaceholder" class="w-full h-full flex items-center justify-center text-slate-300 text-4xl font-bold">?</div>
+                </div>
+            </div>
+            <input type="file" id="profileInput" accept="image/*" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 mb-4 dark:file:bg-teal-900 dark:file:text-teal-300">
+            <div class="flex gap-2">
+                <button onclick="$('#profileModal').addClass('hidden')" class="flex-1 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">ยกเลิก</button>
+                <button onclick="uploadProfile()" class="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-bold">บันทึก</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="calendarModal" class="fixed inset-0 z-[70] hidden bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-2 sm:p-4">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    ตารางเวร (ส่วนตัว)
+                </h3>
+                <button onclick="$('#calendarModal').addClass('hidden')" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+            </div>
+            <div class="flex justify-between items-center mb-4 bg-slate-50 dark:bg-slate-700 p-2 rounded-lg">
+                <button onclick="changeMonth(-1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full"><svg class="w-5 h-5 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                <span id="calMonthYear" class="font-bold text-slate-700 dark:text-white">Month Year</span>
+                <button onclick="changeMonth(1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full"><svg class="w-5 h-5 text-slate-500 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center text-xs text-slate-400 font-bold mb-2"><div>อา</div><div>จ</div><div>อ</div><div>พ</div><div>พฤ</div><div>ศ</div><div>ส</div></div>
+            <div id="calendarGrid" class="calendar-grid flex-grow p-1 touch-scroll overflow-y-auto"></div>
+            <div id="calendarLegend" class="mt-4 flex gap-2 text-[10px] text-slate-600 dark:text-slate-300 justify-center flex-wrap font-medium"></div>
+        </div>
+    </div>
+
+    <div id="calShiftModal" class="fixed inset-0 z-[80] hidden bg-black/20 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-4 w-64 animate-slide-up">
+            <h4 class="text-center font-bold text-slate-700 dark:text-white mb-3" id="calSelectedDate">...</h4>
+            <div class="space-y-2" id="calShiftOptions"></div>
+            <div class="flex gap-2 mt-4">
+                <button onclick="$('#calShiftModal').addClass('hidden')" class="flex-1 py-1.5 text-xs text-slate-500 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded hover:bg-slate-200">ปิด</button>
+                <button onclick="saveShift()" class="flex-1 py-1.5 text-xs text-white bg-indigo-600 rounded hover:bg-indigo-700">บันทึก</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="regModal" class="fixed inset-0 z-[90] hidden bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl transform scale-100 transition-all border border-slate-100 dark:border-slate-700">
+            <h3 class="text-xl font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><span class="w-1 h-6 bg-teal-500 rounded-full"></span> ลงทะเบียน</h3>
+            <form id="regForm" class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="text" name="first_name" placeholder="ชื่อ" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none dark:text-white" required>
+                    <input type="text" name="last_name" placeholder="นามสกุล" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none dark:text-white" required>
+                </div>
+                <div class="space-y-2 bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-600">
+                    <p class="text-xs font-bold text-slate-500 uppercase">กลุ่มงาน</p>
+                    <label class="flex items-center gap-3 p-2 bg-white dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-600 cursor-pointer hover:border-teal-300 transition">
+                        <input type="checkbox" name="work_group" value="พยาธิวิทยากายวิภาค" class="rounded text-teal-600 focus:ring-teal-500">
+                        <span class="text-sm text-slate-700 dark:text-slate-300">พยาธิวิทยากายวิภาค</span>
+                    </label>
+                    <label class="flex items-center gap-3 p-2 bg-white dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-600 cursor-pointer hover:border-teal-300 transition">
+                        <input type="checkbox" name="work_group" value="พยาธิวิทยาคลินิกและเทคนิคการแพทย์" class="rounded text-teal-600 focus:ring-teal-500">
+                        <span class="text-sm text-slate-700 dark:text-slate-300">พยาธิวิทยาคลินิกและเทคนิคการแพทย์</span>
+                    </label>
+                </div>
+                <input type="text" name="user_id" placeholder="กำหนด User ID" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none dark:text-white" required>
+                <input type="password" name="password" placeholder="กำหนดรหัสผ่าน" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none dark:text-white" required>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="$('#regModal').addClass('hidden')" class="flex-1 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">ยกเลิก</button>
+                    <button type="submit" class="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-bold shadow-lg shadow-teal-500/20">ยืนยัน</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="checkInModal" class="fixed inset-0 z-[60] hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl animate-slide-up relative">
+            <button onclick="$('#checkInModal').addClass('hidden')" class="absolute top-4 right-4 text-slate-300 hover:text-slate-500 text-2xl">&times;</button>
+            <div class="mb-4">
+                <span class="bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Check In</span>
+                <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1">บันทึกเวลาเข้า</h3>
+            </div>
+            <form id="checkInForm" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                        <label class="text-[10px] text-slate-400 font-bold uppercase block mb-1">Date</label>
+                        <input type="date" id="inDate" class="w-full bg-transparent font-semibold text-slate-700 dark:text-white outline-none" required>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                        <label class="text-[10px] text-slate-400 font-bold uppercase block mb-1">Time</label>
+                        <input type="time" id="inTime" class="w-full bg-transparent font-semibold text-slate-700 dark:text-white outline-none" required>
+                    </div>
+                </div>
+                
+                <div id="checkInActionArea" class="flex gap-4 pt-2 w-full transition-all duration-300 items-stretch">
+                    <div id="checkInOptionsArea" class="w-[70%] space-y-2 flex flex-col justify-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase hidden" id="checkInWorkTitle">เลือกประเภทงาน</p>
+                        <div id="checkInWorkOptionsInner" class="grid grid-cols-1 gap-2 hidden">
+                             <label class="group border border-slate-200 dark:border-slate-600 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-teal-400 has-[:checked]:bg-teal-50 dark:has-[:checked]:bg-teal-900/30 has-[:checked]:border-teal-500 transition-all option-cp">
+                                <input type="radio" name="workTypeIn" value="เจาะเลือดเช้า" class="w-5 h-5 text-teal-600 focus:ring-teal-500 shrink-0">
+                                <div>
+                                    <span class="text-[13px] block font-bold text-slate-700 dark:text-slate-300 group-hover:text-teal-700 dark:group-hover:text-teal-300 leading-tight">เจาะเลือดเช้า</span>
+                                    <span class="text-[10px] text-teal-600 dark:text-teal-400 font-medium leading-none">Auto ออกงาน 08:00</span>
+                                </div>
+                            </label>
+                            <label class="group border border-slate-200 dark:border-slate-600 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-teal-400 has-[:checked]:bg-teal-50 dark:has-[:checked]:bg-teal-900/30 has-[:checked]:border-teal-500 transition-all option-cp">
+                                <input type="radio" name="workTypeIn" value="เวรแล็บ" class="w-5 h-5 text-teal-600 focus:ring-teal-500 shrink-0">
+                                <span class="text-[13px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-teal-700 dark:group-hover:text-teal-300 leading-tight">เวรแล็บ</span>
+                            </label>
+                             <label class="group border border-slate-200 dark:border-slate-600 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-teal-400 has-[:checked]:bg-teal-50 dark:has-[:checked]:bg-teal-900/30 has-[:checked]:border-teal-500 transition-all option-ap">
+                                <input type="radio" name="workTypeIn" value="เวร HPV" class="w-5 h-5 text-teal-600 focus:ring-teal-500 shrink-0">
+                                <span class="text-[13px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-teal-700 dark:group-hover:text-teal-300 leading-tight">เวร HPV</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="checkInSliderArea" class="w-[30%] flex justify-center items-center">
+                        <div id="checkInSlider" class="v-slider-container v-slider-up">
+                            <div class="v-slider-text">เลื่อนขึ้น<br>เพื่อ<br>ยืนยัน</div>
+                            <div class="v-slider-fill"></div>
+                            <div class="v-slider-thumb">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="checkOutModal" class="fixed inset-0 z-[60] hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl animate-slide-up relative">
+             <button onclick="$('#checkOutModal').addClass('hidden')" class="absolute top-4 right-4 text-slate-300 hover:text-slate-500 text-2xl">&times;</button>
+            <div class="mb-4">
+                 <span class="bg-rose-100 dark:bg-rose-900 text-rose-700 dark:text-rose-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Check Out</span>
+                <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1">บันทึกเวลาออก</h3>
+            </div>
+            <form id="checkOutForm" class="space-y-4">
+                <div class="bg-orange-50/50 dark:bg-orange-900/30 p-3 rounded-2xl border border-orange-100/50 dark:border-orange-800">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="text-[10px] font-bold text-orange-400 uppercase">เวลาเข้างาน</label>
+                        <span id="autoFillBadge" class="hidden text-[9px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-bold">AUTO-FILL 16:00</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="relative w-full min-w-0">
+                            <input type="date" id="outInDate" class="w-full bg-white dark:bg-slate-700 border border-orange-100 dark:border-slate-600 rounded-lg px-1 py-1.5 text-[11px] text-center text-slate-600 dark:text-white focus:border-orange-300 outline-none block">
+                        </div>
+                        <div class="relative w-full min-w-0">
+                            <input type="time" id="outInTime" class="w-full bg-white dark:bg-slate-700 border border-orange-100 dark:border-slate-600 rounded-lg px-1 py-1.5 text-[11px] text-center text-slate-600 dark:text-white focus:border-orange-300 outline-none block">
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                         <label class="text-[10px] text-slate-400 font-bold uppercase block mb-1">Date Now</label>
+                        <input type="date" id="outDate" class="w-full bg-transparent font-semibold text-slate-800 dark:text-white outline-none" required>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                         <label class="text-[10px] text-slate-400 font-bold uppercase block mb-1">Time Now</label>
+                        <input type="time" id="outTime" class="w-full bg-transparent font-semibold text-slate-800 dark:text-white outline-none" required>
+                    </div>
+                </div>
+                
+                <div id="checkOutActionArea" class="flex gap-4 pt-2 w-full transition-all duration-300 items-stretch">
+                    <div id="checkOutOptionsArea" class="w-[70%] space-y-2 flex flex-col justify-center">
+                        <p class="text-xs font-bold text-slate-400 uppercase hidden" id="checkOutWorkTitle">เลือกประเภทงาน</p>
+                        <div id="checkOutWorkOptionsInner" class="grid grid-cols-1 gap-2 hidden">
+                            <label class="group border border-slate-200 dark:border-slate-600 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-rose-400 has-[:checked]:bg-rose-50 dark:has-[:checked]:bg-rose-900/30 has-[:checked]:border-rose-500 transition-all option-cp">
+                                <input type="radio" name="workTypeOut" value="เจาะเลือดเช้า" class="w-5 h-5 text-rose-600 focus:ring-rose-500 shrink-0">
+                                <span class="text-[13px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-rose-700 dark:group-hover:text-rose-300 leading-tight">เจาะเลือดเช้า</span>
+                            </label>
+                            <label class="group border border-slate-200 dark:border-slate-600 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-rose-400 has-[:checked]:bg-rose-50 dark:has-[:checked]:bg-rose-900/30 has-[:checked]:border-rose-500 transition-all option-cp">
+                                <input type="radio" name="workTypeOut" value="เวรแล็บ" class="w-5 h-5 text-rose-600 focus:ring-rose-500 shrink-0">
+                                <div>
+                                    <span class="text-[13px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-rose-700 dark:group-hover:text-rose-300 block leading-tight">เวรแล็บ</span>
+                                    <span class="text-[9px] text-rose-600 dark:text-rose-400 font-medium check-in-notice hidden leading-none mt-1">ถ้าไม่มีข้อมูลเข้า จะตั้ง 16:00</span>
+                                </div>
+                            </label>
+                             <label class="group border border-slate-200 dark:border-slate-600 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-rose-400 has-[:checked]:bg-rose-50 dark:has-[:checked]:bg-rose-900/30 has-[:checked]:border-rose-500 transition-all option-ap">
+                                <input type="radio" name="workTypeOut" value="เวร HPV" class="w-5 h-5 text-rose-600 focus:ring-rose-500 shrink-0">
+                                 <div>
+                                    <span class="text-[13px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-rose-700 dark:group-hover:text-rose-300 block leading-tight">เวร HPV</span>
+                                    <span class="text-[9px] text-rose-600 dark:text-rose-400 font-medium check-in-notice hidden leading-none mt-1">ถ้าไม่มีข้อมูลเข้า จะตั้ง 16:00</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="checkOutSliderArea" class="w-[30%] flex justify-center items-center">
+                        <div id="checkOutSlider" class="v-slider-container v-slider-down">
+                            <div class="v-slider-text">เลื่อนลง<br>เพื่อ<br>ยืนยัน</div>
+                            <div class="v-slider-fill"></div>
+                            <div class="v-slider-thumb">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="editRecordModal" class="fixed inset-0 z-[80] hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl p-6 shadow-2xl animate-slide-up relative">
+            <button onclick="$('#editRecordModal').addClass('hidden')" class="absolute top-4 right-4 text-slate-300 hover:text-slate-500 text-2xl">&times;</button>
+            <div class="mb-4">
+                <span class="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">Edit</span>
+                <h3 class="text-2xl font-bold text-slate-800 dark:text-white mt-1">แก้ไขเวลา</h3>
+            </div>
+            <form id="editRecordForm" class="space-y-4">
+                <input type="hidden" id="editRecordId">
+                <div class="bg-teal-50/50 dark:bg-teal-900/30 p-3 rounded-xl border border-teal-100/50 dark:border-teal-800">
+                    <label class="text-[10px] font-bold text-teal-600 uppercase block mb-2">เวลาเข้างาน</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="date" id="editInDate" class="w-full bg-white dark:bg-slate-700 border border-teal-100 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs text-slate-600 dark:text-white focus:border-teal-300 outline-none" required>
+                        <input type="time" id="editInTime" class="w-full bg-white dark:bg-slate-700 border border-teal-100 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs text-slate-600 dark:text-white focus:border-teal-300 outline-none" required>
+                    </div>
+                </div>
+
+                <div class="bg-rose-50/50 dark:bg-rose-900/30 p-3 rounded-xl border border-rose-100/50 dark:border-rose-800">
+                    <label class="text-[10px] font-bold text-rose-500 uppercase block mb-2">เวลาออกงาน</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="date" id="editOutDate" class="w-full bg-white dark:bg-slate-700 border border-rose-100 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs text-slate-600 dark:text-white focus:border-rose-300 outline-none">
+                        <input type="time" id="editOutTime" class="w-full bg-white dark:bg-slate-700 border border-rose-100 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs text-slate-600 dark:text-white focus:border-rose-300 outline-none">
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-2">ประเภทงาน</label>
+                    <select id="editWorkType" class="w-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm text-slate-600 dark:text-white focus:border-indigo-300 outline-none">
+                        </select>
+                </div>
+                
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="$('#editRecordModal').addClass('hidden')" class="flex-1 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium">ยกเลิก</button>
+                    <button type="submit" class="flex-1 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-bold shadow-lg shadow-amber-500/30">บันทึกการแก้ไข</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="reportModal" class="fixed inset-0 z-[60] hidden bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-0 sm:p-4">
+        <div class="bg-white dark:bg-slate-800 w-full h-full sm:h-auto sm:max-w-5xl sm:max-h-[90vh] sm:rounded-2xl flex flex-col shadow-2xl">
+            <div id="reportControls" class="p-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900 sm:rounded-t-2xl">
+                <h3 class="text-xl font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    สรุปรายเดือน
+                </h3>
+                <button id="reportCloseBtn" onclick="$('#reportModal').addClass('hidden')" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+            </div>
+            
+            <div id="reportFilters" class="p-4 bg-indigo-50/50 dark:bg-indigo-900/30 border-b border-indigo-100 dark:border-indigo-800 flex flex-wrap gap-3 items-center">
+                <select id="reportGroup" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]">
+                    <option value="" disabled selected>เลือกกลุ่มงาน</option>
+                </select>
+                <div id="reportUserContainer" class="hidden">
+                    <select id="reportUser" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="ALL">รวมทุกคน</option>
+                    </select>
+                </div>
+                <select id="reportMonth" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="1">มกราคม</option><option value="2">กุมภาพันธ์</option><option value="3">มีนาคม</option>
+                    <option value="4">เมษายน</option><option value="5">พฤษภาคม</option><option value="6">มิถุนายน</option>
+                    <option value="7">กรกฎาคม</option><option value="8">สิงหาคม</option><option value="9">กันยายน</option>
+                    <option value="10">ตุลาคม</option><option value="11">พฤศจิกายน</option><option value="12">ธันวาคม</option>
+                </select>
+                <select id="reportYear" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                <button onclick="fetchReport()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 shadow-md">ค้นหา</button>
+                <button onclick="exportToExcel()" class="ml-auto bg-green-600 text-white hover:bg-green-700 font-medium flex items-center gap-1 px-3 py-2 rounded-lg shadow-sm mr-2">Export Excel</button>
+                <button onclick="window.print()" class="text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 bg-white border border-indigo-100 px-3 py-2 rounded-lg shadow-sm">พิมพ์รายงาน</button>
+            </div>
+
+            <div id="reportContent" class="flex-grow overflow-y-auto touch-scroll pb-24 bg-slate-50 dark:bg-slate-900 flex flex-col items-center py-4 space-y-4">
+                <div class="bg-white dark:bg-slate-800 p-8 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 text-center text-slate-400 w-full max-w-4xl">
+                    กรุณาเลือกกลุ่มงาน/เดือน/ปี และกดค้นหา
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminScheduleModal" class="fixed inset-0 z-[60] hidden bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-0 sm:p-4">
+        <div class="bg-white dark:bg-slate-800 w-full h-full sm:h-auto sm:max-w-6xl sm:max-h-[95vh] sm:rounded-2xl flex flex-col shadow-2xl">
+            <div id="adminSchedControls" class="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900 sm:rounded-t-2xl">
+                <h3 class="text-lg sm:text-xl font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    ตารางเวรล่วงหน้า & คำนวณรายได้ (Admin)
+                </h3>
+                <div class="flex gap-2">
+                    <button onclick="window.print()" class="text-slate-500 hover:text-emerald-600 bg-white border border-slate-200 px-3 py-1 rounded-lg text-sm font-bold shadow-sm flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg> พิมพ์</button>
+                    <button onclick="$('#adminScheduleModal').addClass('hidden')" class="text-slate-400 hover:text-slate-600 text-2xl font-bold ml-2">&times;</button>
+                </div>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto touch-scroll bg-slate-100 dark:bg-slate-900 p-2 sm:p-4">
+                
+                <div class="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm mb-6 border border-slate-200 dark:border-slate-700">
+                    <div class="flex justify-between items-center mb-4 bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded-lg border border-emerald-100 dark:border-emerald-800/50">
+                        <button onclick="changeAdminMonth(-1)" class="p-1 hover:bg-emerald-200 dark:hover:bg-emerald-800 rounded-full text-emerald-700 dark:text-emerald-300"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                        <span id="adminCalMonthYear" class="font-bold text-emerald-800 dark:text-emerald-100 text-lg">Month Year</span>
+                        <button onclick="changeAdminMonth(1)" class="p-1 hover:bg-emerald-200 dark:hover:bg-emerald-800 rounded-full text-emerald-700 dark:text-emerald-300"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                    </div>
+
+                    <div id="adminSchedLegend" class="flex gap-4 mb-2 text-xs text-slate-600 dark:text-slate-300 justify-center">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-600"></span> เจาะเลือดเช้า</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-blue-600"></span> เวรแล็บ</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-purple-600"></span> เวร HPV</span>
+                    </div>
+
+                    <div class="grid grid-cols-7 gap-1 text-center text-xs text-slate-500 font-bold mb-1"><div>อา.</div><div>จ.</div><div>อ.</div><div>พ.</div><div>พฤ.</div><div>ศ.</div><div>ส.</div></div>
+                    <div id="adminCalendarGrid" class="grid grid-cols-7 gap-1"></div>
+                </div>
+
+                <div class="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700">
+                    <h4 class="font-bold text-slate-700 dark:text-slate-200 mb-4 border-b pb-2">สรุปรายได้คาดการณ์ประจำเดือน <span id="summaryMonthText" class="text-emerald-600"></span></h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left border-collapse">
+                            <thead class="text-xs text-slate-500 bg-slate-50 dark:bg-slate-700 dark:text-slate-300 uppercase">
+                                <tr>
+                                    <th class="px-4 py-3 border-b">ชื่อ-สกุล</th>
+                                    <th class="px-4 py-3 border-b text-center">ชั่วโมงรวม</th>
+                                    <th class="px-4 py-3 border-b text-right">เรท/ชม.</th>
+                                    <th class="px-4 py-3 border-b text-right text-emerald-600">ยอดเงินรวม (บาท)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminSummaryBody" class="divide-y divide-slate-100 dark:divide-slate-700">
+                                </tbody>
+                            <tfoot id="adminSummaryFoot" class="bg-emerald-50 dark:bg-emerald-900/20 font-bold">
+                                </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="manageShiftModal" class="fixed inset-0 z-[80] hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-slide-up relative border border-slate-200 dark:border-slate-700">
+            <button onclick="$('#manageShiftModal').addClass('hidden')" class="absolute top-4 right-4 text-slate-300 hover:text-slate-500 text-2xl">&times;</button>
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4" id="manageShiftTitle">บันทึกเวรล่วงหน้า</h3>
+            
+            <form id="manageShiftForm" class="space-y-4">
+                <input type="hidden" id="shiftRecordId">
+                <input type="hidden" id="shiftDateHidden">
+                
+                <div class="text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 py-2 rounded-lg mb-4" id="shiftDateDisplay"></div>
+
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase block mb-1">เลือกบุคลากร</label>
+                    <select id="shiftUserSelect" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" required>
+                        </select>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase block mb-1">ประเภทเวร</label>
+                    <select id="shiftTypeSelect" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" required>
+                        <option value="" disabled selected>เลือกประเภท...</option>
+                        <option value="เจาะเลือดเช้า">เจาะเลือดเช้า</option>
+                        <option value="เวรแล็บ">เวรแล็บ</option>
+                        <option value="เวร HPV">เวร HPV</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase block mb-1">จำนวนชั่วโมง</label>
+                    <div class="flex gap-2 items-center">
+                        <input type="number" id="shiftHours" step="0.5" min="0.5" class="flex-grow px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" required>
+                        <div id="quickHoursButtons" class="hidden flex gap-1 shrink-0">
+                            <button type="button" onclick="$('#shiftHours').val(4)" class="px-3 py-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800 transition">4</button>
+                            <button type="button" onclick="$('#shiftHours').val(8)" class="px-3 py-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800 transition">8</button>
+                            <button type="button" onclick="$('#shiftHours').val(16)" class="px-3 py-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded-lg font-bold hover:bg-emerald-200 dark:hover:bg-emerald-800 transition">16</button>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-1">* เจาะเลือดเช้า = 1 ชม. | เวรอื่นๆ = 8 ชม. (แก้ตัวเลขได้)</p>
+                </div>
+
+                <div class="flex gap-2 pt-4">
+                    <button type="button" id="btnDeleteShift" onclick="deleteAdminShift()" class="hidden flex-1 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 font-bold text-sm">ลบข้อมูล</button>
+                    <button type="button" onclick="$('#manageShiftModal').addClass('hidden')" class="flex-1 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-sm font-bold">ยกเลิก</button>
+                    <button type="submit" class="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold text-sm shadow-md">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <?!= include('js'); ?>
+
+</body>
+</html>
